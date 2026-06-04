@@ -22,6 +22,12 @@ TASK_ACTIVE_MAX_AGE_SECONDS = 7200
 MAX_SESSION_SCAN_BYTES = 2_000_000
 CODEX_STATE_PATH = Path.home() / ".codex" / ".codex-global-state.json"
 CODEX_SESSIONS_ROOT = Path.home() / ".codex" / "sessions"
+ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
+STATUS_IMAGE_FILES = {
+    "red": "traffic-light-red.png",
+    "yellow": "traffic-light-yellow.png",
+    "green": "traffic-light-green.png",
+}
 UI_TEXT = {
     "zh": {
         "connected": "Codex\uff1a\u5df2\u6210\u529f\u8fde\u63a5",
@@ -68,16 +74,13 @@ class TrafficLightWindow:
 
         self.canvas = tk.Canvas(self.root, width=128, height=172, bg=TRANSPARENT_COLOR, highlightthickness=0)
         self.canvas.pack(pady=(12, 0))
-
-        self.canvas.create_round_rectangle = self._round_rectangle  # type: ignore[attr-defined]
-        self.canvas.create_round_rectangle(24, 4, 104, 168, radius=18, fill="#262a31", outline="#3a404a", width=2)
-        self.lights = {
-            "red": self.canvas.create_oval(42, 20, 86, 64, fill="#5b1d20", outline="#1f1113", width=3),
-            "yellow": self.canvas.create_oval(42, 68, 86, 112, fill="#5c4b1d", outline="#211c10", width=3),
-            "green": self.canvas.create_oval(42, 116, 86, 160, fill="#1d4f34", outline="#101f16", width=3),
-        }
-        self.canvas.create_rectangle(57, 168, 71, 184, fill="#30343b", outline="")
-        self.canvas.create_rectangle(38, 184, 90, 192, fill="#30343b", outline="")
+        self.status_images = self.load_status_images()
+        self.light_item: int | None = None
+        self.lights: dict[str, int] = {}
+        if self.status_images:
+            self.light_item = self.canvas.create_image(64, 86, image=self.status_images["green"], anchor="center")
+        else:
+            self.draw_fallback_light()
 
         self.text_canvas = tk.Canvas(self.root, width=188, height=48, bg=TRANSPARENT_COLOR, highlightthickness=0)
         self.text_canvas.pack(pady=(6, 0))
@@ -107,6 +110,26 @@ class TrafficLightWindow:
             widget.bind("<Button-3>", self.show_menu)
 
         self.poll()
+
+    def load_status_images(self) -> dict[str, tk.PhotoImage]:
+        images: dict[str, tk.PhotoImage] = {}
+        try:
+            for status, filename in STATUS_IMAGE_FILES.items():
+                images[status] = tk.PhotoImage(file=str(ASSET_DIR / filename))
+        except tk.TclError:
+            return {}
+        return images
+
+    def draw_fallback_light(self) -> None:
+        self.canvas.create_round_rectangle = self._round_rectangle  # type: ignore[attr-defined]
+        self.canvas.create_round_rectangle(24, 4, 104, 168, radius=18, fill="#262a31", outline="#3a404a", width=2)
+        self.lights = {
+            "red": self.canvas.create_oval(42, 20, 86, 64, fill="#5b1d20", outline="#1f1113", width=3),
+            "yellow": self.canvas.create_oval(42, 68, 86, 112, fill="#5c4b1d", outline="#211c10", width=3),
+            "green": self.canvas.create_oval(42, 116, 86, 160, fill="#1d4f34", outline="#101f16", width=3),
+        }
+        self.canvas.create_rectangle(57, 168, 71, 184, fill="#30343b", outline="")
+        self.canvas.create_rectangle(38, 184, 90, 192, fill="#30343b", outline="")
 
     def _round_rectangle(self, x1: int, y1: int, x2: int, y2: int, radius: int = 16, **kwargs: object) -> int:
         points = [
@@ -380,13 +403,16 @@ class TrafficLightWindow:
             active = "green"
             data["message"] = status_label("green", self.language)
             write_status("green", status_label("green", self.language), language=self.language)
-        colors = {
-            "red": ("#ef4444", "#5b1d20"),
-            "yellow": ("#facc15", "#5c4b1d"),
-            "green": ("#22c55e", "#1d4f34"),
-        }
-        for name, item in self.lights.items():
-            self.canvas.itemconfig(item, fill=colors[name][0 if name == active else 1])
+        if self.light_item is not None and active in self.status_images:
+            self.canvas.itemconfig(self.light_item, image=self.status_images[active])
+        else:
+            colors = {
+                "red": ("#ef4444", "#5b1d20"),
+                "yellow": ("#facc15", "#5c4b1d"),
+                "green": ("#22c55e", "#1d4f34"),
+            }
+            for name, item in self.lights.items():
+                self.canvas.itemconfig(item, fill=colors[name][0 if name == active else 1])
 
         status_text = status_label(str(active), self.language)
         self.update_outlined_text(self.text_canvas, self.status_text_items, status_text, "#ffffff")
