@@ -27,27 +27,40 @@ scripts/
 .mcp.json                Codex MCP 配置
 ```
 
-## 安装和运行
+## 一键安装
 
-当前配置默认使用这个 Windows 路径：
+下载项目后，双击根目录里的：
+
+```bat
+一键安装.bat
+```
+
+安装脚本会自动完成这些事：
+
+- 复制程序文件到安装目录。
+- 生成正确的 `.mcp.json` 本机路径。
+- 写入 Codex 个人 marketplace，让 Codex 能看到插件。
+- 在桌面创建 `启动Codex红绿灯提示灯` 快捷方式。
+- 自动启动一次悬浮窗。
+
+默认安装到：
 
 ```text
 D:\codex红绿灯提示灯
 ```
 
-把项目放到该目录后，双击启动：
+如果电脑没有 D 盘，会安装到：
 
-```bat
-D:\codex红绿灯提示灯\scripts\start_codex_traffic_light.bat
+```text
+%USERPROFILE%\plugins\codex-traffic-light
 ```
 
-也可以在桌面放一个启动脚本，内容如下：
+## 手动启动
 
-```bat
-@echo off
-set "PYTHONUTF8=1"
-cd /d "D:\codex红绿灯提示灯\scripts"
-start "" pythonw "D:\codex红绿灯提示灯\scripts\traffic_light_window.py"
+安装完成后，双击桌面快捷方式：
+
+```text
+启动Codex红绿灯提示灯
 ```
 
 ## 接入 Codex
@@ -65,6 +78,16 @@ D:\codex红绿灯提示灯\state\status.json
 ```
 
 如果你把项目放在其他目录，需要同步修改 `.mcp.json` 里的脚本路径，以及 `CODEX_TRAFFIC_LIGHT_STATUS` 状态文件路径。
+
+## 卸载
+
+双击：
+
+```bat
+一键卸载.bat
+```
+
+卸载脚本会停止悬浮窗、删除桌面快捷方式、移除 Codex marketplace 条目，并删除默认安装目录。
 
 ## 测试
 
