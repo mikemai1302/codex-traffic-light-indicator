@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "codex-traffic-light": {
+      "command": "python",
+      "args": [
+        "D:\\codex红绿灯提示灯\\scripts\\mcp_server.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "CODEX_TRAFFIC_LIGHT_STATUS": "D:\\codex红绿灯提示灯\\state\\status.json"
+      }
+    }
+  }
+}
