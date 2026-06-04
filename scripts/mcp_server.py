@@ -5,7 +5,7 @@ import sys
 import traceback
 from typing import Any
 
-from traffic_light_common import STATUS_LABELS, VALID_STATUSES, read_status, write_status
+from traffic_light_common import VALID_STATUSES, read_status, status_label, write_status
 
 
 SERVER_INFO = {"name": "codex-traffic-light", "version": "0.1.0"}
@@ -86,7 +86,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         if status not in VALID_STATUSES:
             raise ValueError("status must be one of: red, yellow, green")
         message = arguments.get("message")
-        data = write_status(status, str(message) if message else STATUS_LABELS[status], heartbeat=True)
+        language = read_status().get("language")
+        data = write_status(status, str(message) if message else status_label(status, language), heartbeat=True)
         return tool_result(f"\u63d0\u793a\u706f\u5df2\u8bbe\u7f6e\u4e3a {status}\u3002", data)
 
     if name == "get_codex_light_status":

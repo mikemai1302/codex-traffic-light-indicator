@@ -8,7 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import Menu
 
-from traffic_light_common import STATUS_LABELS, read_status, status_path, write_status
+from traffic_light_common import normalize_language, read_status, status_label, status_path, write_status
 
 
 WINDOW_SIZE = "188x236"
@@ -22,6 +22,32 @@ TASK_ACTIVE_MAX_AGE_SECONDS = 7200
 MAX_SESSION_SCAN_BYTES = 2_000_000
 CODEX_STATE_PATH = Path.home() / ".codex" / ".codex-global-state.json"
 CODEX_SESSIONS_ROOT = Path.home() / ".codex" / "sessions"
+UI_TEXT = {
+    "zh": {
+        "connected": "Codex\uff1a\u5df2\u6210\u529f\u8fde\u63a5",
+        "waiting": "Codex\uff1a\u7b49\u5f85\u8fde\u63a5",
+        "set_red": "\u8bbe\u4e3a\u7ea2\u706f\uff1a\u6b63\u5728\u5e72\u6d3b",
+        "set_yellow": "\u8bbe\u4e3a\u9ec4\u706f\uff1a\u7b49\u5f85\u6388\u6743",
+        "set_green": "\u8bbe\u4e3a\u7eff\u706f\uff1a\u7a7a\u95f2\u4e2d",
+        "language": "\u8bed\u8a00 / Language",
+        "chinese": "\u4e2d\u6587",
+        "english": "English",
+        "open_state": "\u6253\u5f00\u72b6\u6001\u6587\u4ef6\u5939",
+        "exit": "\u9000\u51fa",
+    },
+    "en": {
+        "connected": "Codex connected",
+        "waiting": "Codex waiting",
+        "set_red": "Set red: working",
+        "set_yellow": "Set yellow: approval",
+        "set_green": "Set green: idle",
+        "language": "Language / \u8bed\u8a00",
+        "chinese": "\u4e2d\u6587",
+        "english": "English",
+        "open_state": "Open state folder",
+        "exit": "Exit",
+    },
+}
 
 
 class TrafficLightWindow:
@@ -35,6 +61,7 @@ class TrafficLightWindow:
         self.root.attributes("-transparentcolor", TRANSPARENT_COLOR)
         self.root.configure(bg=TRANSPARENT_COLOR)
         self.drag_origin: tuple[int, int] | None = None
+        self.language = normalize_language(read_status().get("language"))
         self.prompt_history_count = self.read_prompt_history_count()
         self.last_session_mtime = self.latest_session_mtime()
         self.session_quiet_since = time.time()
@@ -58,7 +85,7 @@ class TrafficLightWindow:
             self.text_canvas,
             94,
             12,
-            STATUS_LABELS["green"],
+            status_label("green", self.language),
             fill="#ffffff",
             font=("Microsoft YaHei UI", 11, "bold"),
         )
@@ -66,18 +93,13 @@ class TrafficLightWindow:
             self.text_canvas,
             94,
             34,
-            "Codex\uff1a\u7b49\u5f85\u8fde\u63a5",
+            UI_TEXT[self.language]["waiting"],
             fill="#f3c969",
             font=("Microsoft YaHei UI", 10, "bold"),
         )
 
         self.menu = Menu(self.root, tearoff=False)
-        self.menu.add_command(label="\u8bbe\u4e3a\u7ea2\u706f\uff1a\u6b63\u5728\u5e72\u6d3b", command=lambda: self.manual_set("red"))
-        self.menu.add_command(label="\u8bbe\u4e3a\u9ec4\u706f\uff1a\u7b49\u5f85\u6388\u6743", command=lambda: self.manual_set("yellow"))
-        self.menu.add_command(label="\u8bbe\u4e3a\u7eff\u706f\uff1a\u7a7a\u95f2\u4e2d", command=lambda: self.manual_set("green"))
-        self.menu.add_separator()
-        self.menu.add_command(label="\u6253\u5f00\u72b6\u6001\u6587\u4ef6\u5939", command=self.open_state_folder)
-        self.menu.add_command(label="\u9000\u51fa", command=self.root.destroy)
+        self.rebuild_menu()
 
         for widget in (self.root, self.canvas, self.text_canvas):
             widget.bind("<ButtonPress-1>", self.start_drag)
@@ -146,10 +168,32 @@ class TrafficLightWindow:
         self.root.geometry(f"+{event.x_root - x_offset}+{event.y_root - y_offset}")
 
     def show_menu(self, event: tk.Event) -> None:
+        self.rebuild_menu()
         self.menu.tk_popup(event.x_root, event.y_root)
 
+    def rebuild_menu(self) -> None:
+        text = UI_TEXT[self.language]
+        self.menu.delete(0, "end")
+        self.menu.add_command(label=text["set_red"], command=lambda: self.manual_set("red"))
+        self.menu.add_command(label=text["set_yellow"], command=lambda: self.manual_set("yellow"))
+        self.menu.add_command(label=text["set_green"], command=lambda: self.manual_set("green"))
+        self.menu.add_separator()
+        self.language_menu = Menu(self.menu, tearoff=False)
+        self.language_menu.add_command(label=text["chinese"], command=lambda: self.set_language("zh"))
+        self.language_menu.add_command(label=text["english"], command=lambda: self.set_language("en"))
+        self.menu.add_cascade(label=text["language"], menu=self.language_menu)
+        self.menu.add_separator()
+        self.menu.add_command(label=text["open_state"], command=self.open_state_folder)
+        self.menu.add_command(label=text["exit"], command=self.root.destroy)
+
+    def set_language(self, language: str) -> None:
+        self.language = normalize_language(language)
+        write_status(language=self.language)
+        self.rebuild_menu()
+        self.apply_status()
+
     def manual_set(self, status: str) -> None:
-        write_status(status, STATUS_LABELS[status])
+        write_status(status, status_label(status, self.language), language=self.language)
         self.apply_status()
 
     def open_state_folder(self) -> None:
@@ -179,7 +223,7 @@ class TrafficLightWindow:
     def detect_new_codex_prompt(self) -> None:
         current_count = self.read_prompt_history_count()
         if current_count > self.prompt_history_count:
-            write_status("red", STATUS_LABELS["red"])
+            write_status("red", status_label("red", self.language), language=self.language)
             self.last_session_mtime = self.latest_session_mtime()
             self.session_quiet_since = time.time()
         self.prompt_history_count = max(self.prompt_history_count, current_count)
@@ -308,32 +352,34 @@ class TrafficLightWindow:
 
     def sync_codex_lifecycle_status(self) -> None:
         data = read_status()
+        self.language = normalize_language(data.get("language"))
         if self.authorization_pending():
             if data.get("status") != "yellow":
-                write_status("yellow", STATUS_LABELS["yellow"])
+                write_status("yellow", status_label("yellow", self.language), language=self.language)
             return
 
         if self.codex_task_active():
             if data.get("status") != "red":
-                write_status("red", STATUS_LABELS["red"])
+                write_status("red", status_label("red", self.language), language=self.language)
             return
 
         updated_at = float(data.get("updated_at") or 0)
         if data.get("status") in {"red", "yellow"} and time.time() - updated_at > YELLOW_IDLE_SECONDS:
-            write_status("green", STATUS_LABELS["green"])
+            write_status("green", status_label("green", self.language), language=self.language)
 
     def apply_status(self) -> None:
         data = read_status()
+        self.language = normalize_language(data.get("language"))
         active = data.get("status", "green")
         updated_at = float(data.get("updated_at") or 0)
         if active == "yellow" and not self.authorization_pending() and time.time() - updated_at > YELLOW_IDLE_SECONDS:
             active = "green"
-            data["message"] = STATUS_LABELS["green"]
-            write_status("green", STATUS_LABELS["green"])
+            data["message"] = status_label("green", self.language)
+            write_status("green", status_label("green", self.language), language=self.language)
         if active == "red" and not self.codex_task_active() and time.time() - updated_at > MIN_RED_SECONDS:
             active = "green"
-            data["message"] = STATUS_LABELS["green"]
-            write_status("green", STATUS_LABELS["green"])
+            data["message"] = status_label("green", self.language)
+            write_status("green", status_label("green", self.language), language=self.language)
         colors = {
             "red": ("#ef4444", "#5b1d20"),
             "yellow": ("#facc15", "#5c4b1d"),
@@ -342,7 +388,7 @@ class TrafficLightWindow:
         for name, item in self.lights.items():
             self.canvas.itemconfig(item, fill=colors[name][0 if name == active else 1])
 
-        status_text = str(data.get("message") or STATUS_LABELS.get(active, STATUS_LABELS["green"]))
+        status_text = status_label(str(active), self.language)
         self.update_outlined_text(self.text_canvas, self.status_text_items, status_text, "#ffffff")
         connected = self.codex_available()
         if connected != bool(data.get("codex_connected")):
@@ -351,14 +397,14 @@ class TrafficLightWindow:
             self.update_outlined_text(
                 self.text_canvas,
                 self.connection_text_items,
-                "Codex\uff1a\u5df2\u6210\u529f\u8fde\u63a5",
+                UI_TEXT[self.language]["connected"],
                 "#71f2a1",
             )
         else:
             self.update_outlined_text(
                 self.text_canvas,
                 self.connection_text_items,
-                "Codex\uff1a\u7b49\u5f85\u8fde\u63a5",
+                UI_TEXT[self.language]["waiting"],
                 "#ffd166",
             )
 

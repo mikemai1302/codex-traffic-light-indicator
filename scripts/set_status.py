@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from traffic_light_common import STATUS_LABELS, VALID_STATUSES, write_status
+from traffic_light_common import VALID_STATUSES, read_status, status_label, write_status
 
 
 def main() -> int:
@@ -10,7 +10,8 @@ def main() -> int:
     if status not in VALID_STATUSES:
         print("Usage: python set_status.py red|yellow|green")
         return 2
-    data = write_status(status, STATUS_LABELS[status], heartbeat=True)
+    language = read_status().get("language")
+    data = write_status(status, status_label(status, language), heartbeat=True)
     print(f"status={data['status']}")
     return 0
 
