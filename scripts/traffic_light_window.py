@@ -8,10 +8,9 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import Menu
 
-from traffic_light_common import normalize_language, read_status, status_label, status_path, write_status
+from traffic_light_common import normalize_language, normalize_ui_size, read_status, status_label, status_path, write_status
 
 
-WINDOW_SIZE = "188x236"
 TRANSPARENT_COLOR = "#010203"
 POLL_MS = 500
 CONNECTED_WINDOW_SECONDS = 45
@@ -24,9 +23,53 @@ CODEX_STATE_PATH = Path.home() / ".codex" / ".codex-global-state.json"
 CODEX_SESSIONS_ROOT = Path.home() / ".codex" / "sessions"
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
 STATUS_IMAGE_FILES = {
-    "red": "traffic-light-red.png",
-    "yellow": "traffic-light-yellow.png",
-    "green": "traffic-light-green.png",
+    "red": "traffic-light-red-{size}.png",
+    "yellow": "traffic-light-yellow-{size}.png",
+    "green": "traffic-light-green-{size}.png",
+}
+UI_SIZES = {
+    "small": {
+        "window": "168x222",
+        "canvas_w": 112,
+        "canvas_h": 150,
+        "text_w": 168,
+        "text_h": 48,
+        "text_x": 84,
+        "status_y": 12,
+        "connection_y": 34,
+        "status_font": ("Microsoft YaHei UI", 10, "bold"),
+        "connection_font": ("Microsoft YaHei UI", 9, "bold"),
+        "canvas_pady": (10, 0),
+        "text_pady": (6, 0),
+    },
+    "medium": {
+        "window": "188x236",
+        "canvas_w": 128,
+        "canvas_h": 172,
+        "text_w": 188,
+        "text_h": 48,
+        "text_x": 94,
+        "status_y": 12,
+        "connection_y": 34,
+        "status_font": ("Microsoft YaHei UI", 11, "bold"),
+        "connection_font": ("Microsoft YaHei UI", 10, "bold"),
+        "canvas_pady": (12, 0),
+        "text_pady": (6, 0),
+    },
+    "large": {
+        "window": "228x288",
+        "canvas_w": 164,
+        "canvas_h": 220,
+        "text_w": 228,
+        "text_h": 56,
+        "text_x": 114,
+        "status_y": 14,
+        "connection_y": 40,
+        "status_font": ("Microsoft YaHei UI", 12, "bold"),
+        "connection_font": ("Microsoft YaHei UI", 11, "bold"),
+        "canvas_pady": (12, 0),
+        "text_pady": (7, 0),
+    },
 }
 UI_TEXT = {
     "zh": {
@@ -38,6 +81,10 @@ UI_TEXT = {
         "language": "\u8bed\u8a00 / Language",
         "chinese": "\u4e2d\u6587",
         "english": "English",
+        "size": "\u5927\u5c0f / Size",
+        "small": "\u5c0f",
+        "medium": "\u4e2d",
+        "large": "\u5927",
         "open_state": "\u6253\u5f00\u72b6\u6001\u6587\u4ef6\u5939",
         "exit": "\u9000\u51fa",
     },
@@ -50,6 +97,10 @@ UI_TEXT = {
         "language": "Language / \u8bed\u8a00",
         "chinese": "\u4e2d\u6587",
         "english": "English",
+        "size": "Size / \u5927\u5c0f",
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large",
         "open_state": "Open state folder",
         "exit": "Exit",
     },
@@ -60,46 +111,66 @@ class TrafficLightWindow:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("Codex \u7ea2\u7eff\u706f\u63d0\u793a\u706f")
-        self.root.geometry(WINDOW_SIZE)
         self.root.resizable(False, False)
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.attributes("-transparentcolor", TRANSPARENT_COLOR)
         self.root.configure(bg=TRANSPARENT_COLOR)
         self.drag_origin: tuple[int, int] | None = None
-        self.language = normalize_language(read_status().get("language"))
+        startup_status = read_status()
+        self.language = normalize_language(startup_status.get("language"))
+        self.ui_size = normalize_ui_size(startup_status.get("ui_size"))
         self.prompt_history_count = self.read_prompt_history_count()
         self.last_session_mtime = self.latest_session_mtime()
         self.session_quiet_since = time.time()
 
-        self.canvas = tk.Canvas(self.root, width=128, height=172, bg=TRANSPARENT_COLOR, highlightthickness=0)
-        self.canvas.pack(pady=(12, 0))
+        size_config = UI_SIZES[self.ui_size]
+        self.canvas = tk.Canvas(
+            self.root,
+            width=int(size_config["canvas_w"]),
+            height=int(size_config["canvas_h"]),
+            bg=TRANSPARENT_COLOR,
+            highlightthickness=0,
+        )
+        self.canvas.pack(pady=size_config["canvas_pady"])
         self.status_images = self.load_status_images()
         self.light_item: int | None = None
         self.lights: dict[str, int] = {}
         if self.status_images:
-            self.light_item = self.canvas.create_image(64, 86, image=self.status_images["green"], anchor="center")
+            self.light_item = self.canvas.create_image(
+                int(size_config["canvas_w"]) // 2,
+                int(size_config["canvas_h"]) // 2,
+                image=self.status_images[self.ui_size]["green"],
+                anchor="center",
+            )
         else:
             self.draw_fallback_light()
 
-        self.text_canvas = tk.Canvas(self.root, width=188, height=48, bg=TRANSPARENT_COLOR, highlightthickness=0)
-        self.text_canvas.pack(pady=(6, 0))
+        self.text_canvas = tk.Canvas(
+            self.root,
+            width=int(size_config["text_w"]),
+            height=int(size_config["text_h"]),
+            bg=TRANSPARENT_COLOR,
+            highlightthickness=0,
+        )
+        self.text_canvas.pack(pady=size_config["text_pady"])
         self.status_text_items = self.create_outlined_text(
             self.text_canvas,
-            94,
-            12,
+            int(size_config["text_x"]),
+            int(size_config["status_y"]),
             status_label("green", self.language),
             fill="#ffffff",
-            font=("Microsoft YaHei UI", 11, "bold"),
+            font=size_config["status_font"],
         )
         self.connection_text_items = self.create_outlined_text(
             self.text_canvas,
-            94,
-            34,
+            int(size_config["text_x"]),
+            int(size_config["connection_y"]),
             UI_TEXT[self.language]["waiting"],
             fill="#f3c969",
-            font=("Microsoft YaHei UI", 10, "bold"),
+            font=size_config["connection_font"],
         )
+        self.apply_window_size()
 
         self.menu = Menu(self.root, tearoff=False)
         self.rebuild_menu()
@@ -111,11 +182,13 @@ class TrafficLightWindow:
 
         self.poll()
 
-    def load_status_images(self) -> dict[str, tk.PhotoImage]:
-        images: dict[str, tk.PhotoImage] = {}
+    def load_status_images(self) -> dict[str, dict[str, tk.PhotoImage]]:
+        images: dict[str, dict[str, tk.PhotoImage]] = {}
         try:
-            for status, filename in STATUS_IMAGE_FILES.items():
-                images[status] = tk.PhotoImage(file=str(ASSET_DIR / filename))
+            for size in UI_SIZES:
+                images[size] = {}
+                for status, filename in STATUS_IMAGE_FILES.items():
+                    images[size][status] = tk.PhotoImage(file=str(ASSET_DIR / filename.format(size=size)))
         except tk.TclError:
             return {}
         return images
@@ -181,6 +254,48 @@ class TrafficLightWindow:
             canvas.itemconfig(item, text=text, fill="#050607")
         canvas.itemconfig(items[-1], text=text, fill=fill)
 
+    def configure_outlined_text(
+        self,
+        canvas: tk.Canvas,
+        items: list[int],
+        *,
+        x: int,
+        y: int,
+        font: tuple[str, int, str],
+    ) -> None:
+        offsets = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (0, 0)]
+        for item, (dx, dy) in zip(items, offsets):
+            canvas.coords(item, x + dx, y + dy)
+            canvas.itemconfig(item, font=font)
+
+    def apply_window_size(self) -> None:
+        size_config = UI_SIZES[self.ui_size]
+        self.root.geometry(str(size_config["window"]))
+        self.canvas.config(width=int(size_config["canvas_w"]), height=int(size_config["canvas_h"]))
+        self.canvas.pack_configure(pady=size_config["canvas_pady"])
+        self.text_canvas.config(width=int(size_config["text_w"]), height=int(size_config["text_h"]))
+        self.text_canvas.pack_configure(pady=size_config["text_pady"])
+        if self.light_item is not None and self.ui_size in self.status_images:
+            self.canvas.coords(
+                self.light_item,
+                int(size_config["canvas_w"]) // 2,
+                int(size_config["canvas_h"]) // 2,
+            )
+        self.configure_outlined_text(
+            self.text_canvas,
+            self.status_text_items,
+            x=int(size_config["text_x"]),
+            y=int(size_config["status_y"]),
+            font=size_config["status_font"],
+        )
+        self.configure_outlined_text(
+            self.text_canvas,
+            self.connection_text_items,
+            x=int(size_config["text_x"]),
+            y=int(size_config["connection_y"]),
+            font=size_config["connection_font"],
+        )
+
     def start_drag(self, event: tk.Event) -> None:
         self.drag_origin = (event.x_root - self.root.winfo_x(), event.y_root - self.root.winfo_y())
 
@@ -206,12 +321,25 @@ class TrafficLightWindow:
         self.language_menu.add_command(label=text["english"], command=lambda: self.set_language("en"))
         self.menu.add_cascade(label=text["language"], menu=self.language_menu)
         self.menu.add_separator()
+        self.size_menu = Menu(self.menu, tearoff=False)
+        self.size_menu.add_command(label=text["small"], command=lambda: self.set_size("small"))
+        self.size_menu.add_command(label=text["medium"], command=lambda: self.set_size("medium"))
+        self.size_menu.add_command(label=text["large"], command=lambda: self.set_size("large"))
+        self.menu.add_cascade(label=text["size"], menu=self.size_menu)
+        self.menu.add_separator()
         self.menu.add_command(label=text["open_state"], command=self.open_state_folder)
         self.menu.add_command(label=text["exit"], command=self.root.destroy)
 
     def set_language(self, language: str) -> None:
         self.language = normalize_language(language)
         write_status(language=self.language)
+        self.rebuild_menu()
+        self.apply_status()
+
+    def set_size(self, ui_size: str) -> None:
+        self.ui_size = normalize_ui_size(ui_size)
+        write_status(ui_size=self.ui_size)
+        self.apply_window_size()
         self.rebuild_menu()
         self.apply_status()
 
@@ -393,6 +521,10 @@ class TrafficLightWindow:
     def apply_status(self) -> None:
         data = read_status()
         self.language = normalize_language(data.get("language"))
+        next_size = normalize_ui_size(data.get("ui_size"))
+        if next_size != self.ui_size:
+            self.ui_size = next_size
+            self.apply_window_size()
         active = data.get("status", "green")
         updated_at = float(data.get("updated_at") or 0)
         if active == "yellow" and not self.authorization_pending() and time.time() - updated_at > YELLOW_IDLE_SECONDS:
@@ -403,8 +535,8 @@ class TrafficLightWindow:
             active = "green"
             data["message"] = status_label("green", self.language)
             write_status("green", status_label("green", self.language), language=self.language)
-        if self.light_item is not None and active in self.status_images:
-            self.canvas.itemconfig(self.light_item, image=self.status_images[active])
+        if self.light_item is not None and self.ui_size in self.status_images and active in self.status_images[self.ui_size]:
+            self.canvas.itemconfig(self.light_item, image=self.status_images[self.ui_size][active])
         else:
             colors = {
                 "red": ("#ef4444", "#5b1d20"),

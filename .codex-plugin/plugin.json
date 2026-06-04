@@ -1,6 +1,6 @@
 {
   "name": "codex-traffic-light",
-  "version": "0.1.0+codex.20260604161531",
+  "version": "0.1.0+codex.20260604162537",
   "description": "A small floating traffic light that shows Codex work status.",
   "author": {
     "name": "Local developer"

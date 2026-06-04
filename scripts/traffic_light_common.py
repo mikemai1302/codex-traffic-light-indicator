@@ -9,6 +9,8 @@ from typing import Any
 
 DEFAULT_LANGUAGE = "zh"
 SUPPORTED_LANGUAGES = {"zh", "en"}
+DEFAULT_UI_SIZE = "medium"
+SUPPORTED_UI_SIZES = {"small", "medium", "large"}
 
 STATUS_LABELS_BY_LANGUAGE = {
     "zh": {
@@ -35,6 +37,14 @@ def normalize_language(language: object) -> str:
     return DEFAULT_LANGUAGE
 
 
+def normalize_ui_size(ui_size: object) -> str:
+    if isinstance(ui_size, str):
+        normalized = ui_size.lower().strip()
+        if normalized in SUPPORTED_UI_SIZES:
+            return normalized
+    return DEFAULT_UI_SIZE
+
+
 def status_label(status: str, language: object = DEFAULT_LANGUAGE) -> str:
     normalized_status = status.lower().strip()
     normalized_language = normalize_language(language)
@@ -57,6 +67,7 @@ def default_status() -> dict[str, Any]:
         "status": "green",
         "message": status_label("green"),
         "language": DEFAULT_LANGUAGE,
+        "ui_size": DEFAULT_UI_SIZE,
         "codex_connected": False,
         "last_mcp_heartbeat": 0,
         "updated_at": now,
@@ -76,6 +87,7 @@ def read_status() -> dict[str, Any]:
     if merged.get("status") not in VALID_STATUSES:
         merged["status"] = "green"
     merged["language"] = normalize_language(merged.get("language"))
+    merged["ui_size"] = normalize_ui_size(merged.get("ui_size"))
     return merged
 
 
@@ -84,12 +96,15 @@ def write_status(
     message: str | None = None,
     *,
     language: str | None = None,
+    ui_size: str | None = None,
     codex_connected: bool | None = None,
     heartbeat: bool = False,
 ) -> dict[str, Any]:
     data = read_status()
     if language is not None:
         data["language"] = normalize_language(language)
+    if ui_size is not None:
+        data["ui_size"] = normalize_ui_size(ui_size)
     if status is not None:
         normalized = status.lower().strip()
         if normalized not in VALID_STATUSES:
