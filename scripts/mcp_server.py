@@ -10,6 +10,7 @@ from traffic_light_common import VALID_STATUSES, read_status, status_label, writ
 
 SERVER_INFO = {"name": "codex-traffic-light", "version": "0.1.0"}
 
+# MCP 通过 stdin/stdout 传 JSON-RPC；显式设置 UTF-8，避免中文状态文字乱码。
 if hasattr(sys.stdin, "reconfigure"):
     sys.stdin.reconfigure(encoding="utf-8")
 if hasattr(sys.stdout, "reconfigure"):
@@ -19,6 +20,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 def respond(message_id: Any, result: Any = None, error: Any = None) -> None:
+    # 给 Codex 返回一条标准 JSON-RPC 响应。
     payload: dict[str, Any] = {"jsonrpc": "2.0", "id": message_id}
     if error is not None:
         payload["error"] = error
@@ -29,12 +31,14 @@ def respond(message_id: Any, result: Any = None, error: Any = None) -> None:
 
 
 def tool_result(text: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    # MCP 工具结果必须包装成 content 列表，Codex 才能正常显示。
     if data is not None:
         text = f"{text}\n{json.dumps(data, ensure_ascii=False, indent=2)}"
     return {"content": [{"type": "text", "text": text}]}
 
 
 def list_tools() -> dict[str, Any]:
+    # 这里声明 Codex 能调用的三个工具：设置灯色、读取状态、刷新心跳。
     return {
         "tools": [
             {
@@ -80,6 +84,7 @@ def list_tools() -> dict[str, Any]:
 
 
 def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
+    # Codex 真正调用工具时会走这里，再写入共享 status.json。
     arguments = arguments or {}
     if name == "set_codex_light":
         status = str(arguments.get("status", "")).lower().strip()
@@ -102,6 +107,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def handle(request: dict[str, Any]) -> None:
+    # 处理 initialize、tools/list、tools/call 等 MCP JSON-RPC 方法。
     message_id = request.get("id")
     method = request.get("method")
 
@@ -136,6 +142,7 @@ def handle(request: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    # MCP server 是一个常驻 stdin 循环，每读到一行 JSON 就处理一次请求。
     write_status(heartbeat=True)
     for line in sys.stdin:
         line = line.strip()

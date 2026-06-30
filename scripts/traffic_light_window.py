@@ -22,11 +22,15 @@ MAX_SESSION_SCAN_BYTES = 2_000_000
 CODEX_STATE_PATH = Path.home() / ".codex" / ".codex-global-state.json"
 CODEX_SESSIONS_ROOT = Path.home() / ".codex" / "sessions"
 ASSET_DIR = Path(__file__).resolve().parents[1] / "assets"
+
+# 三种灯色分别对应三张 PNG；{size} 会被替换成 small/medium/large。
 STATUS_IMAGE_FILES = {
     "red": "traffic-light-red-{size}.png",
     "yellow": "traffic-light-yellow-{size}.png",
     "green": "traffic-light-green-{size}.png",
 }
+
+# 三档窗口尺寸配置。每档都同时调整窗口、图片画布、文字画布和字体大小。
 UI_SIZES = {
     "small": {
         "window": "168x222",
@@ -71,6 +75,8 @@ UI_SIZES = {
         "text_pady": (7, 0),
     },
 }
+
+# 右键菜单和连接文字的中英文文案。
 UI_TEXT = {
     "zh": {
         "connected": "Codex\uff1a\u5df2\u6210\u529f\u8fde\u63a5",
@@ -109,6 +115,7 @@ UI_TEXT = {
 
 class TrafficLightWindow:
     def __init__(self) -> None:
+        # Tkinter 窗口使用透明色 + 无边框，做出“只有红绿灯和文字”的悬浮效果。
         self.root = tk.Tk()
         self.root.title("Codex \u7ea2\u7eff\u706f\u63d0\u793a\u706f")
         self.root.resizable(False, False)
@@ -117,6 +124,8 @@ class TrafficLightWindow:
         self.root.attributes("-transparentcolor", TRANSPARENT_COLOR)
         self.root.configure(bg=TRANSPARENT_COLOR)
         self.drag_origin: tuple[int, int] | None = None
+
+        # 启动时从状态文件恢复语言和大小；没有状态文件时使用默认值。
         startup_status = read_status()
         self.language = normalize_language(startup_status.get("language"))
         self.ui_size = normalize_ui_size(startup_status.get("ui_size"))
@@ -124,6 +133,7 @@ class TrafficLightWindow:
         self.last_session_mtime = self.latest_session_mtime()
         self.session_quiet_since = time.time()
 
+        # 上半部分画布只负责显示红绿灯图片。
         size_config = UI_SIZES[self.ui_size]
         self.canvas = tk.Canvas(
             self.root,
@@ -144,8 +154,10 @@ class TrafficLightWindow:
                 anchor="center",
             )
         else:
+            # 如果图片资源丢失，自动退回到 Canvas 绘制版本，保证程序仍可运行。
             self.draw_fallback_light()
 
+        # 下半部分画布显示状态文字和 Codex 连接状态。
         self.text_canvas = tk.Canvas(
             self.root,
             width=int(size_config["text_w"]),
@@ -175,6 +187,7 @@ class TrafficLightWindow:
         self.menu = Menu(self.root, tearoff=False)
         self.rebuild_menu()
 
+        # 鼠标左键拖动，右键打开设置菜单。
         for widget in (self.root, self.canvas, self.text_canvas):
             widget.bind("<ButtonPress-1>", self.start_drag)
             widget.bind("<B1-Motion>", self.drag)
@@ -183,6 +196,7 @@ class TrafficLightWindow:
         self.poll()
 
     def load_status_images(self) -> dict[str, dict[str, tk.PhotoImage]]:
+        # Tkinter 的 PhotoImage 必须保存在实例变量里，否则会被垃圾回收导致图片消失。
         images: dict[str, dict[str, tk.PhotoImage]] = {}
         try:
             for size in UI_SIZES:
@@ -194,6 +208,7 @@ class TrafficLightWindow:
         return images
 
     def draw_fallback_light(self) -> None:
+        # 备用绘制方案：不用图片，直接画一个简单交通灯。
         self.canvas.create_round_rectangle = self._round_rectangle  # type: ignore[attr-defined]
         self.canvas.create_round_rectangle(24, 4, 104, 168, radius=18, fill="#262a31", outline="#3a404a", width=2)
         self.lights = {
@@ -243,6 +258,7 @@ class TrafficLightWindow:
         fill: str,
         font: tuple[str, int, str],
     ) -> list[int]:
+        # 用多层偏移文字模拟描边，让透明背景上的白字更清楚。
         items: list[int] = []
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1)]:
             items.append(canvas.create_text(x + dx, y + dy, text=text, fill="#050607", font=font, anchor="center"))
@@ -263,12 +279,14 @@ class TrafficLightWindow:
         y: int,
         font: tuple[str, int, str],
     ) -> None:
+        # 切换小/中/大时，文字坐标和字体也要一起更新。
         offsets = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (0, 0)]
         for item, (dx, dy) in zip(items, offsets):
             canvas.coords(item, x + dx, y + dy)
             canvas.itemconfig(item, font=font)
 
     def apply_window_size(self) -> None:
+        # 根据当前 ui_size 应用窗口尺寸、画布尺寸、图片位置和文字位置。
         size_config = UI_SIZES[self.ui_size]
         self.root.geometry(str(size_config["window"]))
         self.canvas.config(width=int(size_config["canvas_w"]), height=int(size_config["canvas_h"]))
@@ -297,9 +315,11 @@ class TrafficLightWindow:
         )
 
     def start_drag(self, event: tk.Event) -> None:
+        # 记录鼠标按下时相对于窗口左上角的偏移。
         self.drag_origin = (event.x_root - self.root.winfo_x(), event.y_root - self.root.winfo_y())
 
     def drag(self, event: tk.Event) -> None:
+        # 根据鼠标移动位置更新窗口坐标。
         if self.drag_origin is None:
             return
         x_offset, y_offset = self.drag_origin
@@ -310,6 +330,7 @@ class TrafficLightWindow:
         self.menu.tk_popup(event.x_root, event.y_root)
 
     def rebuild_menu(self) -> None:
+        # 右键菜单每次打开前重建，确保语言切换后菜单文字立即更新。
         text = UI_TEXT[self.language]
         self.menu.delete(0, "end")
         self.menu.add_command(label=text["set_red"], command=lambda: self.manual_set("red"))
@@ -331,12 +352,14 @@ class TrafficLightWindow:
         self.menu.add_command(label=text["exit"], command=self.root.destroy)
 
     def set_language(self, language: str) -> None:
+        # 切换语言后写入状态文件，重启后也会保留。
         self.language = normalize_language(language)
         write_status(language=self.language)
         self.rebuild_menu()
         self.apply_status()
 
     def set_size(self, ui_size: str) -> None:
+        # 切换大小后立即重排窗口，并把大小写入状态文件。
         self.ui_size = normalize_ui_size(ui_size)
         write_status(ui_size=self.ui_size)
         self.apply_window_size()
@@ -344,6 +367,7 @@ class TrafficLightWindow:
         self.apply_status()
 
     def manual_set(self, status: str) -> None:
+        # 菜单里的手动红/黄/绿测试入口。
         write_status(status, status_label(status, self.language), language=self.language)
         self.apply_status()
 
@@ -353,6 +377,7 @@ class TrafficLightWindow:
         subprocess.Popen(["explorer", str(folder)])
 
     def poll(self) -> None:
+        # 主轮询：检测新对话、会话文件变化、授权等待，然后刷新 UI。
         self.detect_new_codex_prompt()
         self.track_session_activity()
         self.sync_codex_lifecycle_status()
@@ -360,6 +385,7 @@ class TrafficLightWindow:
         self.root.after(POLL_MS, self.poll)
 
     def read_prompt_history_count(self) -> int:
+        # Codex 桌面会把输入历史写入全局状态文件；数量增加说明用户刚提交了新消息。
         if not CODEX_STATE_PATH.exists():
             return 0
         try:
@@ -372,6 +398,7 @@ class TrafficLightWindow:
         return sum(len(items) for items in history.values() if isinstance(items, list))
 
     def detect_new_codex_prompt(self) -> None:
+        # 一旦发现用户提交了新 prompt，先切红灯，表示 Codex 正在处理。
         current_count = self.read_prompt_history_count()
         if current_count > self.prompt_history_count:
             write_status("red", status_label("red", self.language), language=self.language)
@@ -380,6 +407,7 @@ class TrafficLightWindow:
         self.prompt_history_count = max(self.prompt_history_count, current_count)
 
     def latest_session_mtime(self) -> float:
+        # 找到最近更新的 Codex session jsonl 文件时间，用于判断会话是否活跃。
         if not CODEX_SESSIONS_ROOT.exists():
             return 0
         latest = 0.0
@@ -400,6 +428,7 @@ class TrafficLightWindow:
         return self.codex_process_running()
 
     def codex_process_running(self) -> bool:
+        # 通过 Windows tasklist 检测 Codex 主进程是否存在，用于连接状态文字。
         try:
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             result = subprocess.run(
@@ -422,6 +451,7 @@ class TrafficLightWindow:
         return False
 
     def recent_session_files(self) -> list[Path]:
+        # 只扫描最近几个 session 文件，降低轮询成本。
         if not CODEX_SESSIONS_ROOT.exists():
             return []
         try:
@@ -432,6 +462,7 @@ class TrafficLightWindow:
         return files[:3]
 
     def parse_timestamp(self, value: object) -> float:
+        # Codex 事件时间通常是 ISO 字符串，这里转成秒级时间戳方便比较。
         if not isinstance(value, str):
             return 0.0
         try:
@@ -441,6 +472,7 @@ class TrafficLightWindow:
             return 0.0
 
     def recent_session_lines(self, path: Path) -> list[str]:
+        # session 文件可能很大，只读末尾一段，足够判断最近的任务和授权状态。
         try:
             with path.open("rb") as handle:
                 handle.seek(0, 2)
@@ -452,6 +484,7 @@ class TrafficLightWindow:
         return data.decode("utf-8", errors="ignore").splitlines()
 
     def authorization_pending(self) -> bool:
+        # 如果发现 require_escalated 的 function_call 还没有对应 output，就认为在等授权。
         pending: dict[str, float] = {}
         for path in reversed(self.recent_session_files()):
             for line in self.recent_session_lines(path):
@@ -475,6 +508,7 @@ class TrafficLightWindow:
         return any(now - created_at < AUTH_PENDING_MAX_AGE_SECONDS for created_at in pending.values())
 
     def codex_task_active(self) -> bool:
+        # 通过 task_started/task_complete 配对判断 Codex 是否仍在处理任务。
         latest_started = 0.0
         latest_completed = 0.0
         for path in reversed(self.recent_session_files()):
@@ -502,6 +536,7 @@ class TrafficLightWindow:
         return time.time() - latest_started < TASK_ACTIVE_MAX_AGE_SECONDS
 
     def sync_codex_lifecycle_status(self) -> None:
+        # 优先级：授权等待黄灯 > 任务进行红灯 > 空闲绿灯。
         data = read_status()
         self.language = normalize_language(data.get("language"))
         if self.authorization_pending():
@@ -519,6 +554,7 @@ class TrafficLightWindow:
             write_status("green", status_label("green", self.language), language=self.language)
 
     def apply_status(self) -> None:
+        # 把状态文件里的 status/language/ui_size 真正应用到窗口显示。
         data = read_status()
         self.language = normalize_language(data.get("language"))
         next_size = normalize_ui_size(data.get("ui_size"))

@@ -12,6 +12,8 @@ SUPPORTED_LANGUAGES = {"zh", "en"}
 DEFAULT_UI_SIZE = "medium"
 SUPPORTED_UI_SIZES = {"small", "medium", "large"}
 
+# 这里集中定义所有会显示在悬浮窗上的状态文字。
+# 其他脚本只保存 status/language，不需要自己拼中文或英文。
 STATUS_LABELS_BY_LANGUAGE = {
     "zh": {
         "red": "Codex \u6b63\u5728\u5e72\u6d3b",
@@ -30,6 +32,7 @@ VALID_STATUSES = set(STATUS_LABELS)
 
 
 def normalize_language(language: object) -> str:
+    # 状态文件可能被手动编辑或旧版本写入，所以读取时统一做兜底。
     if isinstance(language, str):
         normalized = language.lower().strip()
         if normalized in SUPPORTED_LANGUAGES:
@@ -38,6 +41,7 @@ def normalize_language(language: object) -> str:
 
 
 def normalize_ui_size(ui_size: object) -> str:
+    # 只允许三档大小，非法值自动回到中等大小，避免窗口布局异常。
     if isinstance(ui_size, str):
         normalized = ui_size.lower().strip()
         if normalized in SUPPORTED_UI_SIZES:
@@ -46,6 +50,7 @@ def normalize_ui_size(ui_size: object) -> str:
 
 
 def status_label(status: str, language: object = DEFAULT_LANGUAGE) -> str:
+    # 根据当前语言返回灯色对应的短文字。
     normalized_status = status.lower().strip()
     normalized_language = normalize_language(language)
     return STATUS_LABELS_BY_LANGUAGE[normalized_language].get(
@@ -55,6 +60,8 @@ def status_label(status: str, language: object = DEFAULT_LANGUAGE) -> str:
 
 
 def status_path() -> Path:
+    # CODEX_TRAFFIC_LIGHT_STATUS 可用于测试或自定义安装目录。
+    # 没有环境变量时默认写到 D 盘安装目录。
     configured = os.environ.get("CODEX_TRAFFIC_LIGHT_STATUS")
     if configured:
         return Path(configured)
@@ -62,6 +69,7 @@ def status_path() -> Path:
 
 
 def default_status() -> dict[str, Any]:
+    # 状态文件不存在或损坏时使用这份默认值。
     now = time.time()
     return {
         "status": "green",
@@ -75,6 +83,7 @@ def default_status() -> dict[str, Any]:
 
 
 def read_status() -> dict[str, Any]:
+    # 读取共享状态文件，并把缺失字段、非法字段修正成安全值。
     path = status_path()
     if not path.exists():
         return default_status()
@@ -100,6 +109,7 @@ def write_status(
     codex_connected: bool | None = None,
     heartbeat: bool = False,
 ) -> dict[str, Any]:
+    # 所有状态写入都走这里，保证 JSON 原子替换，减少写到一半被读取的概率。
     data = read_status()
     if language is not None:
         data["language"] = normalize_language(language)
